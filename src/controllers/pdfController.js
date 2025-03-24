@@ -10,6 +10,7 @@ const addPdfToQueue = async (req, res) => {
 
   try {
     const job = await pdfQueue.add("pdfJob", { html, apiKey }, { attempts: 3 });
+    console.log(job.data);
     res.json({ message: "Job added to queue", jobId: job.id });
   } catch (error) {
     console.error("❌ Error adding job to queue:", error);

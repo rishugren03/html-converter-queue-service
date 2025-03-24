@@ -1,6 +1,8 @@
 require("dotenv").config();
 const express = require("express");
+const http = require("http");
 const bodyParser = require("body-parser");
+const { setupWebSocket } = require("./config/web-scket");
 
 // worker
 require("./workers/pdfWorker");
@@ -11,9 +13,14 @@ const pdfRoutes = require("./routes/index");
 const app = express();
 app.use(bodyParser.json());
 
+// web-socket
+const server = http.createServer(app); // Create HTTP server
+setupWebSocket(server); // Pass the server to WebSocket setup
+
 app.use("/pdf", pdfRoutes);
 
 const PORT = process.env.PORT || 5001;
-app.listen(PORT, () => {
+server.listen(PORT, () => {
   console.log(`Queue Service running on port ${PORT}`);
+  console.log(`📡 WebSocket server running on ws://localhost:${PORT}`);
 });
