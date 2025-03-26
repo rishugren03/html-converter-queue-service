@@ -5,10 +5,11 @@ const bodyParser = require("body-parser");
 const { setupWebSocket } = require("./config/web-scket");
 
 // worker
-require("./workers/pdfWorker");
+require("./workers/htmlWorker");
+require("./workers/urlWorker");
 
 // routes
-const pdfRoutes = require("./routes/index");
+const jobRoutes = require("./routes/index");
 
 const app = express();
 app.use(bodyParser.json());
@@ -17,7 +18,7 @@ app.use(bodyParser.json());
 const server = http.createServer(app); // Create HTTP server
 setupWebSocket(server); // Pass the server to WebSocket setup
 
-app.use("/pdf", pdfRoutes);
+app.use("/job", jobRoutes);
 
 const PORT = process.env.PORT || 5001;
 server.listen(PORT, () => {

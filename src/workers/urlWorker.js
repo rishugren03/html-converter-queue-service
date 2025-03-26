@@ -3,38 +3,40 @@ const axios = require("axios");
 const { redisConnection } = require("../config/redisConfig");
 const { sendMessageToClients } = require("../config/web-scket");
 
-const pdfWorker = new Worker(
-  "pdfQueue",
+const urlWorker = new Worker(
+  "urlQueue",
   async (job) => {
     try {
       console.log(`📥 Processing job ${job.id}`);
       sendMessageToClients({ jobId: job.id, status: "processing" });
 
-      const { html, apiKey } = job.data;
+      const { url, apiKey, type } = job.data;
 
       // Send request to conversion system
       const response = await axios.post(
-        "http://localhost:7000/api/v1/convert/html-pdf",
-        { html },
+        "http://localhost:7000/api/v1/convert/url",
+        { url, type },
         {
           headers: {
             "x-api-key": apiKey,
             "Content-Type": "application/json",
           },
-          responseType: "arraybuffer",
         }
       );
 
-      console.log(`✅ Job ${job.id} completed successfully`);
-
-      // Send completed PDF data via WebSocket
+      // console.log(response.data);
+      const buffer = response.data.data;
+      // Send the buffer as a response via WebSocket
       sendMessageToClients({
         jobId: job.id,
         status: "completed",
-        pdf: Buffer.from(response.data).toString("base64"), // ✅ Convert buffer to base64
+        data: buffer,
       });
 
-      return response.data;
+      // Log the buffer details
+      console.log(`✅ Job ${job.id} completed successfully`);
+
+      return { success: true, data: buffer };
     } catch (error) {
       console.error(`❌ Job ${job.id} failed:`, error.message);
       sendMessageToClients({
@@ -49,4 +51,4 @@ const pdfWorker = new Worker(
   { connection: redisConnection }
 );
 
-module.exports = { pdfWorker };
+module.exports = { urlWorker };

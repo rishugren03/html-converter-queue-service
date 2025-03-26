@@ -1,8 +1,8 @@
 const { Queue } = require("bullmq");
 const { redisConnection } = require("../config/redisConfig");
 
-const pdfQueue = new Queue("pdfQueue", {
+const htmlQueue = new Queue("htmlQueue", {
   connection: redisConnection,
 });
 
-module.exports = { pdfQueue };
+module.exports = { htmlQueue };

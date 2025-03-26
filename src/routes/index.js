@@ -1,8 +1,10 @@
 const express = require("express");
-const { addPdfToQueue } = require("../controllers/pdfController");
+const { addHtmlToQueue } = require("../controllers/htmlController");
+const { addUrlToQueue } = require("../controllers/urlController");
 
 const router = express.Router();
 
-router.post("/add", addPdfToQueue);
+router.post("/html", addHtmlToQueue);
+router.post("/url", addUrlToQueue);
 
 module.exports = router;
