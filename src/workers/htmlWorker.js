@@ -26,8 +26,6 @@ const htmlWorker = new Worker(
 
       // console.log(response.data);
       const buffer = response.data.data;
-      console.log(response.data);
-      console.log(buffer.length);
       // Send the buffer as a response via WebSocket
       sendMessageToClients({
         jobId: job.id,
