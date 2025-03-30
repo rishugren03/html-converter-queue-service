@@ -6,13 +6,12 @@ const { sendMessageToClients } = require("../config/web-scket");
 const urlWorker = new Worker(
   "urlQueue",
   async (job) => {
+    console.log(`📥 Processing job ${job.id}`);
+    sendMessageToClients({ jobId: job.id, status: "processing" });
+
+    const { url, apiKey, type } = job.data;
+
     try {
-      console.log(`📥 Processing job ${job.id}`);
-      sendMessageToClients({ jobId: job.id, status: "processing" });
-
-      const { url, apiKey, type } = job.data;
-
-      // Send request to conversion system
       const response = await axios.post(
         "http://localhost:7000/api/v1/convert/url",
         { url, type },
@@ -21,34 +20,59 @@ const urlWorker = new Worker(
             "x-api-key": apiKey,
             "Content-Type": "application/json",
           },
+          responseType: "arraybuffer", // Ensure raw binary data is received
+          timeout: 10000, // Prevents long-running requests
         }
       );
 
-      // console.log(response.data);
-      const buffer = response.data.data;
-      // Send the buffer as a response via WebSocket
+      if (!response.data) {
+        throw new Error("Invalid response from conversion system");
+      }
+
+      const fileBuffer = response.data; // Directly create a buffer
+
       sendMessageToClients({
         jobId: job.id,
         status: "completed",
-        data: buffer,
+        data: fileBuffer,
       });
 
-      // Log the buffer details
       console.log(`✅ Job ${job.id} completed successfully`);
-
-      return { success: true, data: buffer };
+      return { success: true, data: fileBuffer };
     } catch (error) {
-      console.error(`❌ Job ${job.id} failed:`, error.message);
-      sendMessageToClients({
-        jobId: job.id,
-        status: "failed",
-        error: error.message,
-      });
+      console.error(`❌ Job ${job.id} failed: ${error.message}`);
 
-      throw error;
+      try {
+        sendMessageToClients({
+          jobId: job.id,
+          status: "failed",
+          error: error.message,
+        });
+      } catch (wsError) {
+        console.error(
+          `⚠️ WebSocket error for job ${job.id}: ${wsError.message}`
+        );
+      }
+
+      throw error; // Ensures job retries if configured
     }
   },
-  { connection: redisConnection }
+  {
+    connection: redisConnection,
+    concurrency: 5,
+    limiter: {
+      max: 50,
+      duration: 1000,
+    },
+    defaultJobOptions: {
+      attempts: 3,
+      backoff: { type: "exponential", delay: 3000 },
+      removeOnComplete: true,
+      removeOnFail: false,
+    },
+  }
 );
+
+console.log("✅ URL Worker initialized successfully");
 
 module.exports = { urlWorker };

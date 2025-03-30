@@ -12,7 +12,8 @@ require("./workers/urlWorker");
 const jobRoutes = require("./routes/index");
 
 const app = express();
-app.use(bodyParser.json());
+app.use(express.json());
+// app.use(express.raw({ type: "application/octet-stream" }));
 
 // web-socket
 const server = http.createServer(app); // Create HTTP server
