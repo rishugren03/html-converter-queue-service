@@ -1,12 +1,13 @@
 const puppeteer = require("puppeteer");
 
 const htmlToPdf = async (html, browser) => {
-  const page = await browser.newPage();
+  let page;
   try {
     if (!html || typeof html !== "string" || !html.trim()) {
       throw new Error("Valid HTML content is required");
     }
 
+    page = await browser.newPage();
     await page.setContent(html, { waitUntil: "networkidle2" });
     await page.waitForFunction(() => document.readyState === "complete");
 

@@ -1,7 +1,7 @@
 const puppeteer = require("puppeteer");
 
-const urlToImage = async (url) => {
-  let browser;
+const urlToImage = async (url, browser) => {
+  let page;
   try {
     if (!url || typeof url !== "string") {
       throw new Error("Valid URL is required");
@@ -9,13 +9,7 @@ const urlToImage = async (url) => {
 
     console.log(`Generating Image from URL: ${url}`);
 
-    // Launch Puppeteer with optimizations
-    browser = await puppeteer.launch({
-      headless: "new", // Uses Puppeteer's latest optimized headless mode
-      args: ["--no-sandbox", "--disable-setuid-sandbox"],
-    });
-
-    const page = await browser.newPage();
+    page = await browser.newPage();
 
     // Block unnecessary resources (ads, tracking scripts) for speed
     await page.setRequestInterception(true);
@@ -43,7 +37,7 @@ const urlToImage = async (url) => {
     console.error("Error generating image:", error.message);
     throw new Error("Failed to generate image");
   } finally {
-    if (browser) await browser.close(); // Ensure cleanup
+    if (page) await page.close(); // Ensure cleanup
   }
 };
 

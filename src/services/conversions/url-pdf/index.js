@@ -1,7 +1,7 @@
 const puppeteer = require("puppeteer");
 
-const urlToPdf = async (url) => {
-  let browser;
+const urlToPdf = async (url, browser) => {
+  let page;
   try {
     if (!url || typeof url !== "string") {
       throw new Error("Valid URL is required");
@@ -9,13 +9,7 @@ const urlToPdf = async (url) => {
 
     console.log(`Generating PDF from URL: ${url}`);
 
-    // Launch Puppeteer with optimizations
-    browser = await puppeteer.launch({
-      headless: "new", // Uses Puppeteer's latest optimized headless mode
-      args: ["--no-sandbox", "--disable-setuid-sandbox"],
-    });
-
-    const page = await browser.newPage();
+    page = await browser.newPage();
 
     // Block unnecessary resources (ads, tracking scripts, images, fonts) for faster performance
     await page.setRequestInterception(true);
@@ -46,7 +40,7 @@ const urlToPdf = async (url) => {
     console.error("Error generating PDF:", error.message);
     throw new Error("Failed to generate PDF");
   } finally {
-    if (browser) await browser.close(); // Ensure cleanup
+    if (page) await page.close(); // Ensure cleanup
   }
 };
 
