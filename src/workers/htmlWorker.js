@@ -1,8 +1,23 @@
 const { Worker } = require("bullmq");
-const axios = require("axios");
-const fs = require("fs"); // Required for saving the buffer to a file
 const { redisConnection } = require("../config/redisConfig");
 const { sendMessageToClients } = require("../config/web-scket");
+const { convertHTML } = require("../services/universal-converter/index");
+const puppeteer = require("puppeteer");
+
+let browser = null; // Store Puppeteer instance globally
+let jobCount = 0; // Track processed jobs
+const MAX_JOBS_BEFORE_RESTART = 50; // Change this as needed
+
+async function getBrowser() {
+  if (!browser) {
+    console.log("🚀 Launching new Puppeteer instance...");
+    browser = await puppeteer.launch({
+      headless: "new",
+      args: ["--no-sandbox", "--disable-setuid-sandbox"],
+    });
+  }
+  return browser;
+}
 
 const htmlWorker = new Worker(
   "htmlQueue",
@@ -10,58 +25,58 @@ const htmlWorker = new Worker(
     console.log(`📥 Processing job ${job.id}`);
     sendMessageToClients({ jobId: job.id, status: "processing" });
 
-    const { html, apiKey, type } = job.data;
+    const { html, type } = job.data;
 
     try {
-      const response = await axios.post(
-        "http://localhost:7000/api/v1/convert/html",
-        { html, type },
-        {
-          headers: {
-            "x-api-key": apiKey,
-            "Content-Type": "application/json",
-          },
-          responseType: "arraybuffer", // Ensures binary response
-          timeout: 10000,
-        }
+      const browserInstance = await getBrowser();
+      const { data, mimeType, extension } = await convertHTML(
+        html,
+        type,
+        browserInstance
       );
-
-      if (!response.data) {
-        throw new Error("Invalid response from conversion system");
-      }
-
-      const fileBuffer = response.data;
 
       sendMessageToClients({
         jobId: job.id,
         status: "completed",
-        data: fileBuffer,
+        mimeType,
+        extension,
+        data: data.toString("base64"),
       });
 
+      sendMessageToClients(data, true);
+
       console.log(`✅ Job ${job.id} completed successfully`);
-      return { success: true, data: fileBuffer };
+
+      // Track job count
+      jobCount++;
+
+      // Close browser if job limit reached
+      if (jobCount >= MAX_JOBS_BEFORE_RESTART) {
+        console.log(
+          "♻️ Restarting Puppeteer after processing multiple jobs..."
+        );
+        await browser.close();
+        browser = null;
+        jobCount = 0;
+      }
+
+      return { success: true };
     } catch (error) {
       console.error(`❌ Job ${job.id} failed: ${error.message}`);
 
-      try {
-        sendMessageToClients({
-          jobId: job.id,
-          status: "failed",
-          error: error.message,
-        });
-      } catch (wsError) {
-        console.error(
-          `⚠️ WebSocket error for job ${job.id}: ${wsError.message}`
-        );
-      }
+      sendMessageToClients({
+        jobId: job.id,
+        status: "failed",
+        error: error.message,
+      });
 
-      throw error; // BullMQ will retry if configured
+      throw error;
     }
   },
   {
     connection: redisConnection,
     concurrency: 5,
-    limiter: { max: 50, duration: 1000 },
+    limiter: { max: 50, duration: 3500 },
     defaultJobOptions: {
       attempts: 3,
       backoff: { type: "exponential", delay: 3000 },

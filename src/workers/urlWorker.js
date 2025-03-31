@@ -1,7 +1,7 @@
 const { Worker } = require("bullmq");
-const axios = require("axios");
 const { redisConnection } = require("../config/redisConfig");
 const { sendMessageToClients } = require("../config/web-scket");
+const { convertURL } = require("../services/universal-converter/index"); // Import function
 
 const urlWorker = new Worker(
   "urlQueue",
@@ -9,36 +9,22 @@ const urlWorker = new Worker(
     console.log(`📥 Processing job ${job.id}`);
     sendMessageToClients({ jobId: job.id, status: "processing" });
 
-    const { url, apiKey, type } = job.data;
+    const { url, type } = job.data;
 
     try {
-      const response = await axios.post(
-        "http://localhost:7000/api/v1/convert/url",
-        { url, type },
-        {
-          headers: {
-            "x-api-key": apiKey,
-            "Content-Type": "application/json",
-          },
-          responseType: "arraybuffer", // Ensure raw binary data is received
-          timeout: 10000, // Prevents long-running requests
-        }
-      );
-
-      if (!response.data) {
-        throw new Error("Invalid response from conversion system");
-      }
-
-      const fileBuffer = response.data; // Directly create a buffer
+      // Call function directly instead of making an API request
+      const { data, mimeType, extension } = await convertURL(url, type);
 
       sendMessageToClients({
         jobId: job.id,
         status: "completed",
-        data: fileBuffer,
+        data, // Send file buffer
+        mimeType,
+        extension,
       });
 
       console.log(`✅ Job ${job.id} completed successfully`);
-      return { success: true, data: fileBuffer };
+      return { success: true, data };
     } catch (error) {
       console.error(`❌ Job ${job.id} failed: ${error.message}`);
 
@@ -54,16 +40,13 @@ const urlWorker = new Worker(
         );
       }
 
-      throw error; // Ensures job retries if configured
+      throw error; // BullMQ will retry if configured
     }
   },
   {
     connection: redisConnection,
     concurrency: 5,
-    limiter: {
-      max: 50,
-      duration: 1000,
-    },
+    limiter: { max: 50, duration: 1000 },
     defaultJobOptions: {
       attempts: 3,
       backoff: { type: "exponential", delay: 3000 },
@@ -74,5 +57,4 @@ const urlWorker = new Worker(
 );
 
 console.log("✅ URL Worker initialized successfully");
-
 module.exports = { urlWorker };
