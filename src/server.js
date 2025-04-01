@@ -19,6 +19,10 @@ app.use(express.json());
 const server = http.createServer(app); // Create HTTP server
 setupWebSocket(server); // Pass the server to WebSocket setup
 
+app.get("/", (req, res) => {
+  res.send("pong :)");
+});
+
 app.use("/job", jobRoutes);
 
 const PORT = process.env.PORT || 5001;
