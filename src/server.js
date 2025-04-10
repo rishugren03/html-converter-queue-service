@@ -27,7 +27,7 @@ app.get("/", (req, res) => {
   res.send("pong :)");
 });
 
-app.use("/job", jobRoutes);
+app.use("/queue/job", jobRoutes);
 
 const PORT = process.env.PORT || 5001;
 server.listen(PORT, () => {
