@@ -5,6 +5,7 @@ const { redisConnection } = require("../config/redisConfig");
 const { sendMessageToClients } = require("../config/web-scket");
 const { convertHTML } = require("../services/universal-converter/index");
 const puppeteer = require("puppeteer");
+const GenericPool = require("generic-pool"); // Add this import
 
 // Read Lua script from file
 const luaScript = fs.readFileSync(
@@ -12,9 +13,45 @@ const luaScript = fs.readFileSync(
   "utf8"
 );
 
-let browser = null;
-let jobCount = 0;
-const MAX_JOBS_BEFORE_RESTART = 50;
+// Browser pool configuration
+const browserPool = GenericPool.createPool(
+  {
+    create: async () => {
+      console.log("🚀 Creating new browser instance");
+      return await puppeteer.launch({
+        headless: "new",
+        executablePath: puppeteer.executablePath(),
+        args: [
+          "--no-sandbox",
+          "--disable-setuid-sandbox",
+          // "--disable-dev-shm-usage", // Important for Docker
+          "--disable-gpu",
+          "--single-process",
+        ],
+      });
+    },
+    destroy: async (browser) => {
+      console.log("🔌 Closing browser instance");
+      await browser.close();
+    },
+    validate: async (browser) => {
+      try {
+        // Test if browser is still healthy
+        const version = await browser.version();
+        return !!version;
+      } catch (e) {
+        return false;
+      }
+    },
+  },
+  {
+    min: 1,
+    max: 5,
+    acquireTimeoutMillis: 30000,
+    idleTimeoutMillis: 300000,
+    evictionRunIntervalMillis: 60000,
+  }
+);
 
 // Timeout wrapper
 function withTimeout(promise, timeout = 30000) {
@@ -24,24 +61,6 @@ function withTimeout(promise, timeout = 30000) {
       setTimeout(() => reject(new Error("Puppeteer timeout")), timeout)
     ),
   ]);
-}
-
-async function getBrowser() {
-  if (!browser) {
-    console.log("🚀 Launching new Puppeteer instance...");
-    browser = await puppeteer.launch({
-      headless: true,
-      executablePath: puppeteer.executablePath(),
-      args: ["--no-sandbox", "--disable-setuid-sandbox"],
-    });
-
-    // Optional: Listen for crashes
-    browser.on("disconnected", () => {
-      console.warn("💥 Puppeteer browser crashed! Resetting...");
-      browser = null;
-    });
-  }
-  return browser;
 }
 
 async function updateUsageCount(apiKey) {
@@ -63,6 +82,7 @@ const htmlWorker = new Worker(
   async (job) => {
     const { html, type, apiKey } = job.data;
     console.log(`📥 Processing job ${job.id}`);
+    let browser, page;
 
     if (!apiKey) {
       const errMsg = "API key missing";
@@ -72,11 +92,12 @@ const htmlWorker = new Worker(
     }
 
     try {
-      const browserInstance = await getBrowser();
+      // Acquire browser from pool
+      browser = await browserPool.acquire();
       sendMessageToClients({ jobId: job.id, status: "processing" });
 
       const { data, mimeType, extension } = await withTimeout(
-        convertHTML(html, type, browserInstance),
+        convertHTML(html, type, browser),
         30000
       );
 
@@ -89,21 +110,7 @@ const htmlWorker = new Worker(
       });
 
       console.log(`✅ Job ${job.id} completed successfully`);
-
       await updateUsageCount(apiKey);
-
-      jobCount++;
-      if (jobCount >= MAX_JOBS_BEFORE_RESTART) {
-        console.log("♻️ Restarting Puppeteer after max jobs...");
-        try {
-          await browser.close();
-        } catch (closeErr) {
-          console.warn("⚠️ Error while closing browser:", closeErr.message);
-        } finally {
-          browser = null;
-          jobCount = 0;
-        }
-      }
 
       const usage = process.memoryUsage();
       console.log(
@@ -124,11 +131,20 @@ const htmlWorker = new Worker(
       });
 
       return { success: false, error: error.message };
+    } finally {
+      // Always release the browser back to the pool
+      if (browser) {
+        await browserPool.release(browser).catch((err) => {
+          console.error("Error releasing browser:", err);
+          // If release fails, destroy the browser to keep pool clean
+          browserPool.destroy(browser);
+        });
+      }
     }
   },
   {
     connection: redisConnection,
-    // Removed concurrency to test with 1 job at a time
+    concurrency: 5,
     limiter: { max: 50, duration: 3500 },
     defaultJobOptions: {
       attempts: 3,
@@ -139,5 +155,11 @@ const htmlWorker = new Worker(
   }
 );
 
-console.log("✅ HTML Worker initialized");
+// Cleanup on process exit
+process.on("beforeExit", async () => {
+  await browserPool.drain();
+  await browserPool.clear();
+});
+
+console.log("✅ HTML Worker initialized with browser pooling");
 module.exports = { htmlWorker };
