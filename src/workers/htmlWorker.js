@@ -16,19 +16,34 @@ let browser = null;
 let jobCount = 0;
 const MAX_JOBS_BEFORE_RESTART = 50;
 
+// Timeout wrapper
+function withTimeout(promise, timeout = 30000) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error("Puppeteer timeout")), timeout)
+    ),
+  ]);
+}
+
 async function getBrowser() {
   if (!browser) {
     console.log("🚀 Launching new Puppeteer instance...");
     browser = await puppeteer.launch({
-      headless: "new",
+      headless: true,
       executablePath: puppeteer.executablePath(),
       args: ["--no-sandbox", "--disable-setuid-sandbox"],
+    });
+
+    // Optional: Listen for crashes
+    browser.on("disconnected", () => {
+      console.warn("💥 Puppeteer browser crashed! Resetting...");
+      browser = null;
     });
   }
   return browser;
 }
 
-// Function to update usage count using Lua
 async function updateUsageCount(apiKey) {
   const [success, updatedUsage] = await redisConnection.eval(
     luaScript,
@@ -37,39 +52,32 @@ async function updateUsageCount(apiKey) {
     `api_usage:${apiKey}` // KEYS[2]
   );
 
-  if (!success) {
-    throw new Error("Redis update failed");
-  }
+  if (!success) throw new Error("Redis update failed");
 
-  console.log(`🔄 Updated usage count in Redis: ${updatedUsage}`);
+  console.log(`🔄 Updated usage count: ${updatedUsage}`);
   return updatedUsage;
 }
 
 const htmlWorker = new Worker(
   "htmlQueue",
   async (job) => {
+    const { html, type, apiKey } = job.data;
     console.log(`📥 Processing job ${job.id}`);
 
-    const { html, type, apiKey } = job.data;
     if (!apiKey) {
-      console.error("❌ Job failed: API key is missing");
-      sendMessageToClients({
-        jobId: job.id,
-        status: "failed",
-        error: "API key missing",
-      });
-      return { success: false, error: "API key missing" };
+      const errMsg = "API key missing";
+      console.error(`❌ Job ${job.id} failed: ${errMsg}`);
+      sendMessageToClients({ jobId: job.id, status: "failed", error: errMsg });
+      return { success: false, error: errMsg };
     }
 
     try {
-      // 🔹 Process the job with Puppeteer
       const browserInstance = await getBrowser();
       sendMessageToClients({ jobId: job.id, status: "processing" });
 
-      const { data, mimeType, extension } = await convertHTML(
-        html,
-        type,
-        browserInstance
+      const { data, mimeType, extension } = await withTimeout(
+        convertHTML(html, type, browserInstance),
+        30000
       );
 
       sendMessageToClients({
@@ -82,17 +90,29 @@ const htmlWorker = new Worker(
 
       console.log(`✅ Job ${job.id} completed successfully`);
 
-      // 🔹 **Atomic usage count update using Lua**
       await updateUsageCount(apiKey);
 
-      // 🔹 Restart Puppeteer if needed
       jobCount++;
       if (jobCount >= MAX_JOBS_BEFORE_RESTART) {
-        console.log("♻️ Restarting Puppeteer after multiple jobs...");
-        await browser.close();
-        browser = null;
-        jobCount = 0;
+        console.log("♻️ Restarting Puppeteer after max jobs...");
+        try {
+          await browser.close();
+        } catch (closeErr) {
+          console.warn("⚠️ Error while closing browser:", closeErr.message);
+        } finally {
+          browser = null;
+          jobCount = 0;
+        }
       }
+
+      const usage = process.memoryUsage();
+      console.log(
+        `📊 Mem: RSS=${(usage.rss / 1024 / 1024).toFixed(2)}MB, Heap=${(
+          usage.heapUsed /
+          1024 /
+          1024
+        ).toFixed(2)}MB`
+      );
 
       return { success: true };
     } catch (error) {
@@ -102,12 +122,13 @@ const htmlWorker = new Worker(
         status: "failed",
         error: error.message,
       });
-      throw error;
+
+      return { success: false, error: error.message };
     }
   },
   {
     connection: redisConnection,
-    concurrency: 5,
+    // Removed concurrency to test with 1 job at a time
     limiter: { max: 50, duration: 3500 },
     defaultJobOptions: {
       attempts: 3,
@@ -118,5 +139,5 @@ const htmlWorker = new Worker(
   }
 );
 
-console.log("✅ HTML Worker initialized successfully");
+console.log("✅ HTML Worker initialized");
 module.exports = { htmlWorker };
