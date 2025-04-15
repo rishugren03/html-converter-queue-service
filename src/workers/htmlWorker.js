@@ -26,7 +26,7 @@ const browserPool = GenericPool.createPool(
           "--disable-setuid-sandbox",
           // "--disable-dev-shm-usage", // Important for Docker
           "--disable-gpu",
-          // "--single-process",
+          // "--single-process", //for very high concurrency
         ],
       });
     },

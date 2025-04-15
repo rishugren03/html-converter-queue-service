@@ -5,8 +5,11 @@ const bodyParser = require("body-parser");
 const { setupWebSocket } = require("./config/web-scket");
 
 // worker
-require("./workers/htmlWorker");
-require("./workers/urlWorker");
+// require("./workers/htmlWorker");
+// require("./workers/urlWorker");
+
+// wk-workers
+require("./workers/wk-workers/htmlWorker");
 
 // routes
 const jobRoutes = require("./routes/index");
