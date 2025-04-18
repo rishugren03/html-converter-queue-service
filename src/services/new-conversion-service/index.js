@@ -3,7 +3,7 @@ const {
   htmlToImage,
 } = require("../../../../new-conversion-system/index");
 
-const htmlUnivConverter = async (type, html) => {
+const htmlUnivConverter = async (type, html, qualitySettings) => {
   try {
     if (!type || !html) {
       return "type and html both are required!";
@@ -12,11 +12,13 @@ const htmlUnivConverter = async (type, html) => {
     let result;
     switch (type) {
       case "html-pdf":
-        result = await htmlToPdf(html);
+      case "html-pdf-batch":
+        result = await htmlToPdf(html, qualitySettings);
         break;
 
       case "html-image":
-        result = await htmlToImage(html);
+      case "html-image-batch":
+        result = await htmlToImage(html, qualitySettings);
         break;
 
       default:

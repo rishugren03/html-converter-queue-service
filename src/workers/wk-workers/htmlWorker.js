@@ -7,6 +7,7 @@ const { sendMessageToClients } = require("../../config/web-scket");
 const {
   htmlUnivConverter,
 } = require("../../services/new-conversion-service/index");
+const getConvQualitySettings = require("../helper");
 
 // Read Lua script from file
 const luaScript = fs.readFileSync(
@@ -31,7 +32,8 @@ async function updateUsageCount(apiKey) {
 const htmlWorker = new Worker(
   "htmlQueue",
   async (job) => {
-    const { html, type, apiKey } = job.data;
+    const { html, type, apiKey, plan } = job.data;
+
     console.log(`📥 Processing job ${job.id}`);
 
     if (!apiKey) {
@@ -44,10 +46,12 @@ const htmlWorker = new Worker(
     try {
       sendMessageToClients({ jobId: job.id, status: "processing" });
 
+      const qualitySettings = getConvQualitySettings(plan);
       // ✨ Use new-conversion-service instead of puppeteer
       const { buffer, mimeType, extension } = await htmlUnivConverter(
         type,
-        html
+        html,
+        qualitySettings
       );
 
       sendMessageToClients({

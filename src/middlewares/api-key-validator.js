@@ -11,10 +11,12 @@ const apiKeyMiddleware = async (req, res, next) => {
     if (cachedKey) {
       console.log("✅ API Key found in Redis");
       req.apiUser = JSON.parse(cachedKey);
-
+      // console.log(req.apiUser);
       // 🛑 Check if usage limit is exceeded
-      if (req.apiUser.usageCount >= req.apiUser.planLimit) {
-        return res.status(429).json({ error: "API limit exceeded" });
+      if (req.apiUser.plan !== "pro_max") {
+        if (req.apiUser.usageCount >= req.apiUser.planLimit) {
+          return res.status(429).json({ error: "API limit exceeded" });
+        }
       }
 
       return next();
@@ -23,8 +25,8 @@ const apiKeyMiddleware = async (req, res, next) => {
     console.log("🔄 API Key not found in Redis. Fetching from Auth Service...");
 
     const response = await axios.get(
-      "http://3.17.77.70/auth/api/api-key/validate",
-      // "http://localhost:5000/auth/api/api-key/validate",
+      // "http://3.17.77.70/auth/api/api-key/validate",
+      "http://localhost:5000/auth/api/api-key/validate",
       // http://3.17.77.70/
       { headers: { "x-api-key": apiKey } }
     );
@@ -33,8 +35,10 @@ const apiKeyMiddleware = async (req, res, next) => {
       req.apiUser = response.data.data;
 
       // 🛑 Check if usage limit is exceeded
-      if (req.apiUser.usageCount >= req.apiUser.planLimit) {
-        return res.status(429).json({ error: "API limit exceeded" });
+      if (req.apiUser.plan !== "pro_max") {
+        if (req.apiUser.usageCount >= req.apiUser.planLimit) {
+          return res.status(429).json({ error: "API limit exceeded" });
+        }
       }
 
       // Cache API key details in Redis for 5 minutes

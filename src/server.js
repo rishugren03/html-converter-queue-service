@@ -11,6 +11,9 @@ const { setupWebSocket } = require("./config/web-scket");
 // wk-workers
 require("./workers/wk-workers/htmlWorker");
 
+// batch wk-worker
+require("./workers/wk-workers/htmlBatchWorker");
+
 // routes
 const jobRoutes = require("./routes/index");
 
@@ -36,4 +39,8 @@ const PORT = process.env.PORT || 5001;
 server.listen(PORT, () => {
   console.log(`Queue Service running on port ${PORT}`);
   console.log(`📡 WebSocket server running on ws://localhost:${PORT}`);
+});
+
+process.on("uncaughtException", (err) => {
+  console.error(`Uncaught Exception`, err);
 });

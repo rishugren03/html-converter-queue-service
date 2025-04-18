@@ -13,7 +13,7 @@ const htmlQueue = new Queue("htmlQueue", {
   // Default options for each job added
   defaultJobOptions: {
     attempts: 3,
-    backoff: { type: "exponential", delay: 2000 },
+    backoff: { type: "exponential", delay: 5000 },
     removeOnComplete: true,
     removeOnFail: false,
   },
