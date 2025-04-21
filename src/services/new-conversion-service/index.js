@@ -1,7 +1,7 @@
 const {
   htmlToPdf,
   htmlToImage,
-} = require("../../../../new-conversion-system/index");
+} = require("../../../../new-conversion-package/index");
 
 const htmlUnivConverter = async (type, html, qualitySettings) => {
   try {
