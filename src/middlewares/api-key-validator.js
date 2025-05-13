@@ -25,7 +25,7 @@ const apiKeyMiddleware = async (req, res, next) => {
     console.log("🔄 API Key not found in Redis. Fetching from Auth Service...");
 
     const response = await axios.get(
-      "https://auth.web2docx.com/auth/auth/api/api-key/validate",
+      "https://auth.web2docx.com/auth/api/api-key/validate",
       // "http://localhost:5000/auth/api/api-key/validate",
       { headers: { "x-api-key": apiKey } }
     );
@@ -53,6 +53,7 @@ const apiKeyMiddleware = async (req, res, next) => {
 
     return res.status(403).json({ error: "Invalid API key" });
   } catch (error) {
+    console.log(error);
     console.error("API Key Middleware Error:", error.message);
     return res.status(500).json({ error: "Auth Service Error" });
   }
