@@ -20,6 +20,13 @@ const addHtmlToQueue = async (req, res) => {
       if (!htmlList.length) {
         return res.status(400).json({ error: "htmlList cannot be empty" });
       }
+      if (htmlList.length > 10) {
+        return res
+          .status(413)
+          .json({
+            error: "Batch limit exceeded. Maximum 10 HTML documents allowed.",
+          });
+      }
     } else {
       if (!html || typeof html !== "string" || html.trim() === "") {
         return res

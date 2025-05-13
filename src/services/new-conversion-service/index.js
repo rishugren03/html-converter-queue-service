@@ -23,6 +23,7 @@ const htmlUnivConverter = async (type, html, qualitySettings) => {
         break;
 
       case "html-docx":
+      case "html-docx-batch":
         result = await htmlToDocx(html);
         break;
 
