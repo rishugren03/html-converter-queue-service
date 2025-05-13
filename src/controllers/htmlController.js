@@ -55,14 +55,14 @@ const addHtmlToQueue = async (req, res) => {
     }
 
     // If it's a batch job, only allow pro_max users
-    if (isBatch && user.plan !== "pro_max") {
-      console.warn(
-        "❌ Batch processing denied: User is not a Pro Max subscriber"
-      );
-      return res.status(403).json({
-        error: "Batch processing is available for Pro Max users only",
-      });
-    }
+    // if (isBatch && user.plan !== "pro_max") {
+    //   console.warn(
+    //     "❌ Batch processing denied: User is not a Pro Max subscriber"
+    //   );
+    //   return res.status(403).json({
+    //     error: "Batch processing is available for Pro Max users only",
+    //   });
+    // }
 
     // Add job to the correct queue
     const job = await queue.add(

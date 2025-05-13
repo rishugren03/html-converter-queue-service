@@ -1,6 +1,7 @@
 const {
   htmlToPdf,
   htmlToImage,
+  htmlToDocx,
 } = require("../../../../new-conversion-package/index");
 
 const htmlUnivConverter = async (type, html, qualitySettings) => {
@@ -19,6 +20,10 @@ const htmlUnivConverter = async (type, html, qualitySettings) => {
       case "html-image":
       case "html-image-batch":
         result = await htmlToImage(html, qualitySettings);
+        break;
+
+      case "html-docx":
+        result = await htmlToDocx(html);
         break;
 
       default:

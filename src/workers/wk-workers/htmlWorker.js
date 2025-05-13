@@ -47,7 +47,6 @@ const htmlWorker = new Worker(
       sendMessageToClients({ jobId: job.id, status: "processing" });
 
       const qualitySettings = getConvQualitySettings(plan);
-      // ✨ Use new-conversion-service instead of puppeteer
       const { buffer, mimeType, extension } = await htmlUnivConverter(
         type,
         html,
