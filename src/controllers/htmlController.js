@@ -7,6 +7,13 @@ const addHtmlToQueue = async (req, res) => {
     const apiKey = req.headers["x-api-key"];
     const user = req.apiUser;
 
+    if (type == "html-docx" && user.plan === "free") {
+      console.warn("❌ Html to DOCX conversion denied: Subscribe to Pro");
+      return res.status(403).json({
+        error: "DOCX conversion is available only for Pro and Pro Max users",
+      });
+    }
+
     // Validate API Key
     if (!apiKey) {
       console.warn("⚠️ Missing API Key in request headers");
@@ -21,11 +28,9 @@ const addHtmlToQueue = async (req, res) => {
         return res.status(400).json({ error: "htmlList cannot be empty" });
       }
       if (htmlList.length > 10) {
-        return res
-          .status(413)
-          .json({
-            error: "Batch limit exceeded. Maximum 10 HTML documents allowed.",
-          });
+        return res.status(413).json({
+          error: "Batch limit exceeded. Maximum 10 HTML documents allowed.",
+        });
       }
     } else {
       if (!html || typeof html !== "string" || html.trim() === "") {
@@ -62,14 +67,14 @@ const addHtmlToQueue = async (req, res) => {
     }
 
     // If it's a batch job, only allow pro_max users
-    // if (isBatch && user.plan !== "pro_max") {
-    //   console.warn(
-    //     "❌ Batch processing denied: User is not a Pro Max subscriber"
-    //   );
-    //   return res.status(403).json({
-    //     error: "Batch processing is available for Pro Max users only",
-    //   });
-    // }
+    if (isBatch && user.plan !== "pro_max") {
+      console.warn(
+        "❌ Batch processing denied: User is not a Pro Max subscriber"
+      );
+      return res.status(403).json({
+        error: "Batch processing is available for Pro Max users only",
+      });
+    }
 
     // Add job to the correct queue
     const job = await queue.add(
