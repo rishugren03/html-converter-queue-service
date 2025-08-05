@@ -1,6 +1,8 @@
 const { Server } = require("ws");
 
 let clients = new Map(); // Store connected clients with metadata
+// Store completed job messages for clients that connect later
+let pendingJobMessages = new Map(); // jobId -> message
 
 function setupWebSocket(server) {
   const wss = new Server({
@@ -37,6 +39,28 @@ function setupWebSocket(server) {
       })
     );
 
+    // Check for pending job messages and send them to this client
+    if (pendingJobMessages.size > 0) {
+      console.log(
+        `📬 Sending ${pendingJobMessages.size} pending job messages to client ${clientId}`
+      );
+      for (const [jobId, message] of pendingJobMessages.entries()) {
+        try {
+          ws.send(JSON.stringify(message));
+          console.log(
+            `📤 Sent pending job ${jobId} message to client ${clientId}`
+          );
+        } catch (error) {
+          console.error(
+            `❌ Error sending pending message to ${clientId}:`,
+            error
+          );
+        }
+      }
+      // Clear pending messages after sending
+      pendingJobMessages.clear();
+    }
+
     ws.on("message", (message) => {
       try {
         const data = JSON.parse(message.toString());
@@ -57,12 +81,15 @@ function setupWebSocket(server) {
     });
 
     ws.on("close", (code, reason) => {
-      console.log(`❌ Client ${clientId} disconnected (${code}: ${reason})`);
+      console.log(
+        `📋 Client ${clientId} disconnected (${code}: ${reason}) - ready for reconnection`
+      );
       clients.delete(clientId);
     });
 
     ws.on("error", (error) => {
       console.error(`❌ WebSocket error for client ${clientId}:`, error);
+      // Only remove from tracking, don't force close
       clients.delete(clientId);
     });
 
@@ -73,25 +100,42 @@ function setupWebSocket(server) {
     });
   });
 
-  // Clean up dead connections every 30 seconds
+  // Health check every 30 seconds (but don't terminate connections)
   const heartbeat = setInterval(() => {
     wss.clients.forEach((ws) => {
       if (ws.isAlive === false) {
-        console.log("🧹 Terminating dead connection");
-        return ws.terminate();
+        // Just log but don't terminate - keep persistent connections
+        console.log(
+          "⚠️ Connection appears unresponsive but maintaining persistent connection"
+        );
       }
 
       ws.isAlive = false;
       ws.ping();
     });
 
-    // Also clean up from our clients map
+    // Clean up only from our clients map for memory management, but don't close connections
     const now = new Date();
     for (const [clientId, clientInfo] of clients.entries()) {
       const timeSinceLastSeen = now - clientInfo.lastSeen;
-      if (timeSinceLastSeen > 60000) {
-        // 1 minute
-        console.log(`🧹 Removing stale client ${clientId}`);
+      const timeSinceConnected = now - clientInfo.connectedAt;
+
+      // Debug: Log client timing info
+      console.log(
+        `🔍 Client ${clientId}: connected ${timeSinceConnected}ms ago, last seen ${timeSinceLastSeen}ms ago`
+      );
+
+      // Add grace period for newly connected clients (don't remove within first 2 minutes)
+      if (timeSinceConnected < 120000) {
+        console.log(`⏳ Client ${clientId} in grace period - not removing`);
+        continue;
+      }
+
+      if (timeSinceLastSeen > 300000) {
+        // 5 minutes (more lenient)
+        console.log(
+          `🧹 Removing stale client ${clientId} from memory (connection remains open)`
+        );
         clients.delete(clientId);
       }
     }
@@ -129,6 +173,30 @@ function sendMessageToClients(data) {
       clients.delete(clientId);
     }
   });
+
+  // If no clients received the message and it's a job-related message, store it for later
+  if (
+    sentCount === 0 &&
+    data.jobId &&
+    (data.status === "completed" || data.status === "failed")
+  ) {
+    console.log(
+      `💾 No clients connected - storing job ${data.jobId} message for later delivery`
+    );
+    pendingJobMessages.set(data.jobId, data);
+
+    // Clean up old pending messages (older than 10 minutes)
+    const tenMinutesAgo = Date.now() - 600000;
+    for (const [jobId, jobMessage] of pendingJobMessages.entries()) {
+      if (jobMessage.timestamp && jobMessage.timestamp < tenMinutesAgo) {
+        console.log(`🧹 Removing old pending message for job ${jobId}`);
+        pendingJobMessages.delete(jobId);
+      }
+    }
+
+    // Add timestamp to track message age
+    data.timestamp = Date.now();
+  }
 
   if (data.jobId) {
     console.log(
