@@ -6,6 +6,7 @@ const redisConnection = new Redis({
   retryStrategy: (times) => Math.min(times * 50, 2000),
   maxRetriesPerRequest: null,
   enableReadyCheck: false,
+  lazyConnect: true,
 });
 
 redisConnection.on("connect", () => {
@@ -14,6 +15,19 @@ redisConnection.on("connect", () => {
 
 redisConnection.on("error", (err) => {
   console.error("❌ Redis Connection Error:", err);
+});
+
+// Graceful shutdown
+process.on("SIGINT", async () => {
+  console.log("🔌 Closing Redis connection...");
+  await redisConnection.quit();
+  process.exit(0);
+});
+
+process.on("SIGTERM", async () => {
+  console.log("🔌 Closing Redis connection...");
+  await redisConnection.quit();
+  process.exit(0);
 });
 
 module.exports = { redisConnection };

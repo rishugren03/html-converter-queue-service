@@ -22,7 +22,7 @@ async function updateUsageCount(apiKey, incrementBy = 1) {
     2,
     `api_key:${apiKey}`,
     `api_usage:${apiKey}`,
-    incrementBy
+    incrementBy.toString()
   );
   if (!success) throw new Error("Redis update failed");
   console.log(`🔄 Updated usage count: ${updatedUsage}`);
@@ -56,27 +56,60 @@ const htmlBatchWorker = new Worker(
         message: `Processing ${htmlList.length} files`,
       });
 
-      // Setup archive in memory with proper event handling
+      // Setup archive in memory with proper event handling and memory management
       const archiveStream = new PassThrough();
       const archiveBuffers = [];
-      archiveStream.on("data", (chunk) => archiveBuffers.push(chunk));
+      let totalSize = 0;
+      const MAX_MEMORY_SIZE = 100 * 1024 * 1024; // 100MB limit
 
-      const archive = archiver("zip", { zlib: { level: 9 } });
+      archiveStream.on("data", (chunk) => {
+        totalSize += chunk.length;
+        if (totalSize > MAX_MEMORY_SIZE) {
+          throw new Error("Archive size exceeds memory limit");
+        }
+        archiveBuffers.push(chunk);
+      });
+
+      const archive = archiver("zip", {
+        zlib: { level: 6 }, // Reduced compression for better performance
+        store: false,
+      });
 
       // Set up proper promise to wait for archiving to complete
       const archiveFinished = new Promise((resolve, reject) => {
+        let isResolved = false;
+
         archive.on("warning", (err) => {
           console.warn(`⚠️ BATCH Job ${job.id} archive warning:`, err);
           // Only reject on serious errors
-          if (err.code === "ENOENT") reject(err);
+          if (err.code === "ENOENT" && !isResolved) {
+            isResolved = true;
+            reject(err);
+          }
         });
 
         archive.on("error", (err) => {
           console.error(`❌ BATCH Job ${job.id} archive error:`, err);
-          reject(err);
+          if (!isResolved) {
+            isResolved = true;
+            reject(err);
+          }
         });
 
-        archiveStream.on("end", resolve);
+        archive.on("finish", () => {
+          if (!isResolved) {
+            isResolved = true;
+            resolve();
+          }
+        });
+
+        // Timeout safety
+        setTimeout(() => {
+          if (!isResolved) {
+            isResolved = true;
+            reject(new Error("Archive timeout"));
+          }
+        }, 90000); // 90 second timeout
       });
 
       archive.pipe(archiveStream);
@@ -101,11 +134,20 @@ const htmlBatchWorker = new Worker(
 
           const qualitySettings = getConvQualitySettings(plan);
 
-          const { buffer, extension } = await htmlUnivConverter(
+          // Add timeout wrapper for individual conversions
+          const conversionPromise = htmlUnivConverter(
             type,
             html,
             qualitySettings
           );
+          const timeoutPromise = new Promise((_, reject) =>
+            setTimeout(() => reject(new Error("Conversion timeout")), 30000)
+          );
+
+          const { buffer, extension } = await Promise.race([
+            conversionPromise,
+            timeoutPromise,
+          ]);
           archive.append(buffer, { name: `document_${i + 1}.${extension}` });
           processedFiles++;
         } catch (conversionError) {
@@ -129,6 +171,9 @@ const htmlBatchWorker = new Worker(
 
       // Combine all buffers into final ZIP file
       const finalZipBuffer = Buffer.concat(archiveBuffers);
+
+      // Clean up memory
+      archiveBuffers.length = 0;
 
       // Send the completed archive back to client
       sendMessageToClients({
@@ -200,6 +245,17 @@ htmlBatchWorker.on("completed", (job) => {
 htmlBatchWorker.on("error", (err) => {
   console.error("❌ BATCH Worker error:", err);
   console.log(err);
+});
+
+// Graceful shutdown
+process.on("SIGINT", async () => {
+  console.log("🔌 Closing HTML BATCH Worker...");
+  await htmlBatchWorker.close();
+});
+
+process.on("SIGTERM", async () => {
+  console.log("🔌 Closing HTML BATCH Worker...");
+  await htmlBatchWorker.close();
 });
 
 console.log("✅ HTML BATCH Worker initialized for batch processing");

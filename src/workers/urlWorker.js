@@ -24,7 +24,7 @@ const urlWorker = new Worker(
       });
 
       console.log(`✅ Job ${job.id} completed successfully`);
-      return { success: true, data };
+      return { success: true };
     } catch (error) {
       console.error(`❌ Job ${job.id} failed: ${error.message}`);
 
@@ -55,6 +55,34 @@ const urlWorker = new Worker(
     },
   }
 );
+
+// Handle worker events
+urlWorker.on("failed", (job, err) => {
+  console.error(
+    `❌ URL Worker job ${job.id} failed with error: ${err.message}`
+  );
+  console.log(err);
+});
+
+urlWorker.on("completed", (job) => {
+  console.log(`✓ URL Worker job ${job.id} completed`);
+});
+
+urlWorker.on("error", (err) => {
+  console.error("❌ URL Worker error:", err);
+  console.log(err);
+});
+
+// Graceful shutdown
+process.on("SIGINT", async () => {
+  console.log("🔌 Closing URL Worker...");
+  await urlWorker.close();
+});
+
+process.on("SIGTERM", async () => {
+  console.log("🔌 Closing URL Worker...");
+  await urlWorker.close();
+});
 
 console.log("✅ URL Worker initialized successfully");
 module.exports = { urlWorker };

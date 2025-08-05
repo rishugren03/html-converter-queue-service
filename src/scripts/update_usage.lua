@@ -1,5 +1,6 @@
 local api_key = KEYS[1]
 local usage_key = KEYS[2]
+local increment_by = tonumber(ARGV[1]) or 1
 
 -- Fetch API key details from Redis
 local api_data = redis.call("GET", api_key)
@@ -11,13 +12,13 @@ end
 local api_table = cjson.decode(api_data)
 
 -- Only increment usageCount if it's found in Redis
-api_table.usageCount = api_table.usageCount + 1
+api_table.usageCount = api_table.usageCount + increment_by
 
 -- Store updated API key in Redis
 redis.call("SET", api_key, cjson.encode(api_table))
 
 -- Increment usage count separately for monitoring purposes
-local updated_usage = redis.call("INCR", usage_key)
+local updated_usage = redis.call("INCRBY", usage_key, increment_by)
 
 -- Return new usage count
 return {true, updated_usage}

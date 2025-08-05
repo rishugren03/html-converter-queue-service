@@ -63,12 +63,13 @@ function withTimeout(promise, timeout = 30000) {
   ]);
 }
 
-async function updateUsageCount(apiKey) {
+async function updateUsageCount(apiKey, incrementBy = 1) {
   const [success, updatedUsage] = await redisConnection.eval(
     luaScript,
     2,
     `api_key:${apiKey}`, // KEYS[1]
-    `api_usage:${apiKey}` // KEYS[2]
+    `api_usage:${apiKey}`, // KEYS[2]
+    incrementBy.toString() // ARGV[1]
   );
 
   if (!success) throw new Error("Redis update failed");

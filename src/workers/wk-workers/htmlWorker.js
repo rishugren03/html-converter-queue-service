@@ -15,12 +15,13 @@ const luaScript = fs.readFileSync(
   "utf8"
 );
 
-async function updateUsageCount(apiKey) {
+async function updateUsageCount(apiKey, incrementBy = 1) {
   const [success, updatedUsage] = await redisConnection.eval(
     luaScript,
     2,
     `api_key:${apiKey}`,
-    `api_usage:${apiKey}`
+    `api_usage:${apiKey}`,
+    incrementBy.toString()
   );
 
   if (!success) throw new Error("Redis update failed");
@@ -97,6 +98,34 @@ const htmlWorker = new Worker(
     },
   }
 );
+
+// Handle worker events
+htmlWorker.on("failed", (job, err) => {
+  console.error(
+    `❌ HTML Worker job ${job.id} failed with error: ${err.message}`
+  );
+  console.log(err);
+});
+
+htmlWorker.on("completed", (job) => {
+  console.log(`✓ HTML Worker job ${job.id} completed`);
+});
+
+htmlWorker.on("error", (err) => {
+  console.error("❌ HTML Worker error:", err);
+  console.log(err);
+});
+
+// Graceful shutdown
+process.on("SIGINT", async () => {
+  console.log("🔌 Closing HTML Worker...");
+  await htmlWorker.close();
+});
+
+process.on("SIGTERM", async () => {
+  console.log("🔌 Closing HTML Worker...");
+  await htmlWorker.close();
+});
 
 console.log("✅ HTML Worker initialized with new-conversion-service");
 
